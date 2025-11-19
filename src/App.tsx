@@ -9,14 +9,14 @@ import { Axis, MaterialSettings, SliceSettings, Slice, Sheet, ModelStats } from 
 import * as THREE from 'three';
 import { LayoutDashboard, Box, Layers, AlertTriangle, Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 
-if (!process.env.API_KEY) console.warn("process.env.API_KEY is not set.");
+if (!process.env.API_KEY) { console.warn("process.env.API_KEY is not set. AI features will be disabled."); }
 
 const App: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
   const [originalGeometry, setOriginalGeometry] = useState<THREE.BufferGeometry | null>(null);
   const [geometry, setGeometry] = useState<THREE.BufferGeometry | null>(null);
   const [material, setMaterial] = useState<MaterialSettings>({ width: 200, length: 200, thickness: 3, unit: 'mm' });
-  const [sliceSettings, setSliceSettings] = useState<SliceSettings>({ axis: Axis.Y, count: 20, mode: 'count', layerHeight: 10 });
+  const [sliceSettings, setSliceSettings] = useState<SliceSettings>({ axis: Axis.Y, layerHeight: 10 });
   
   const [slices, setSlices] = useState<Slice[]>([]);
   const [sheets, setSheets] = useState<Sheet[]>([]);
@@ -88,8 +88,9 @@ const App: React.FC = () => {
   const modelStats: ModelStats | null = useMemo(() => {
       if (!geometry) return null;
       geometry.computeBoundingBox();
+      const box = geometry.boundingBox!;
       const size = new THREE.Vector3();
-      geometry.boundingBox!.getSize(size);
+      box.getSize(size);
       return {
           dimensions: { x: size.x, y: size.y, z: size.z },
           volume: size.x * size.y * size.z,
@@ -105,13 +106,20 @@ const App: React.FC = () => {
     setActiveTab('3d'); 
     
     try {
-        let finalCount = sliceSettings.count;
-        if (sliceSettings.mode === 'height') {
-            if (modelStats) {
-                const dim = sliceSettings.axis === Axis.X ? modelStats.dimensions.x
-                            : sliceSettings.axis === Axis.Y ? modelStats.dimensions.y
-                            : modelStats.dimensions.z;
-                finalCount = Math.max(2, Math.floor((dim / sliceSettings.layerHeight) - 1));
+        if (sliceSettings.layerHeight <= 0) throw new Error("Layer height must be greater than 0.");
+        
+        let finalCount = 10; 
+        if (modelStats) {
+            const dim = sliceSettings.axis === Axis.X ? modelStats.dimensions.x
+                        : sliceSettings.axis === Axis.Y ? modelStats.dimensions.y
+                        : modelStats.dimensions.z;
+            
+            const calculatedCount = (dim / sliceSettings.layerHeight) - 1;
+            finalCount = Math.max(2, Math.floor(calculatedCount));
+            
+            if (finalCount < 2) {
+                 console.warn("Layer height too large, defaulting to 2 slices.");
+                 finalCount = 2;
             }
         }
 
@@ -128,78 +136,64 @@ const App: React.FC = () => {
     }
   };
 
-  const handleAISuggestion = (axis: Axis, count: number) => {
-      setSliceSettings(prev => ({ ...prev, axis, count, mode: 'count' }));
+  const handleAISuggestion = (axis: Axis, layerHeight: number) => {
+      setSliceSettings(prev => ({ ...prev, axis, layerHeight }));
   };
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-200 font-sans overflow-hidden">
       <Sidebar
-        onFileChange={handleFileChange}
-        material={material} setMaterial={setMaterial}
-        sliceSettings={sliceSettings} setSliceSettings={setSliceSettings}
-        onSlice={handleSlice} isProcessing={isProcessing} canSlice={!!geometry}
-        activeTab={activeTab} modelStats={modelStats} onResize={handleResize}
+        onFileChange={handleFileChange} material={material} setMaterial={setMaterial}
+        sliceSettings={sliceSettings} setSliceSettings={setSliceSettings} onSlice={handleSlice}
+        isProcessing={isProcessing} canSlice={!!geometry} activeTab={activeTab} modelStats={modelStats} onResize={handleResize}
       >
          <AIAssistant modelStats={modelStats} onSuggestParams={handleAISuggestion} />
       </Sidebar>
 
       <div className="flex-grow flex flex-col h-full relative">
         <div className="absolute top-4 left-4 z-10 flex space-x-2 bg-slate-900/90 backdrop-blur p-1 rounded-lg border border-slate-700 shadow-xl">
-            <button onClick={() => setActiveTab('3d')} className={`px-4 py-2 rounded-md text-sm font-medium ${activeTab === '3d' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>3D Model</button>
-            <button onClick={() => setActiveTab('sheets')} disabled={sheets.length === 0} className={`px-4 py-2 rounded-md text-sm font-medium ${activeTab === 'sheets' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>Nested Sheets</button>
-            <button onClick={() => setActiveTab('assembly')} disabled={slices.length === 0} className={`px-4 py-2 rounded-md text-sm font-medium ${activeTab === 'assembly' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>Assembly View</button>
+            <button onClick={() => setActiveTab('3d')} className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === '3d' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}><Box className="w-4 h-4 mr-2" />3D Model</button>
+            <button onClick={() => setActiveTab('sheets')} disabled={sheets.length === 0} className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'sheets' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-50'}`}><LayoutDashboard className="w-4 h-4 mr-2" />Nested Sheets ({sheets.length})</button>
+            <button onClick={() => setActiveTab('assembly')} disabled={slices.length === 0} className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'assembly' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-50'}`}><Layers className="w-4 h-4 mr-2" />Assembly View</button>
         </div>
 
         {error && (
-            <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-50 bg-red-900/90 text-red-100 px-6 py-3 rounded-lg shadow-xl border border-red-500/50 flex items-center">
-                <AlertTriangle className="w-5 h-5 mr-3" /> <span>{error}</span>
-                <button onClick={() => setError(null)} className="ml-4 font-bold">&times;</button>
+            <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-50 bg-red-900/90 text-red-100 px-6 py-3 rounded-lg shadow-xl border border-red-500/50 flex items-center animate-fade-in-down">
+                <AlertTriangle className="w-5 h-5 mr-3" /><span>{error}</span><button onClick={() => setError(null)} className="ml-4 text-red-200 hover:text-white font-bold">&times;</button>
             </div>
         )}
 
         <div className="flex-grow relative w-full h-full">
             {activeTab === '3d' && (
                 <Viewer3D 
-                    key={geometry?.uuid || 'empty'}
-                    file={file} geometry={geometry}
-                    onModelLoaded={handleModelLoaded} onError={handleLoadError}
+                    key={geometry?.uuid || 'empty'} file={file} geometry={geometry} onModelLoaded={handleModelLoaded} onError={handleLoadError}
                     slices={slices} sliceAxis={sliceSettings.axis} showSlicesOnly={false}
                     processingHeight={isProcessing ? (progress.current / progress.total) * (modelStats?.dimensions[sliceSettings.axis] || 100) : undefined}
                 />
             )}
-            
             {activeTab === 'assembly' && (
                 <>
                     <Viewer3D 
-                        key={geometry?.uuid || 'assembly'}
-                        file={file} geometry={geometry}
-                        onModelLoaded={handleModelLoaded} onError={handleLoadError}
-                        slices={slices} sliceAxis={sliceSettings.axis} showSlicesOnly={true}
-                        assemblyIndex={assemblyIndex} material={material} 
+                        key={geometry?.uuid || 'assembly'} file={file} geometry={geometry} onModelLoaded={handleModelLoaded} onError={handleLoadError}
+                        slices={slices} sliceAxis={sliceSettings.axis} showSlicesOnly={true} assemblyIndex={assemblyIndex} material={material} 
                     />
                     <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 w-full max-w-lg bg-slate-900/90 backdrop-blur-sm border border-slate-700 rounded-xl p-4 shadow-2xl flex flex-col space-y-3">
-                        <input type="range" min="0" max={slices.length} value={assemblyIndex} onChange={(e) => { setAssemblyIndex(Number(e.target.value)); setIsPlaying(false); }} className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
+                        <div className="flex justify-between text-xs text-slate-400 font-mono uppercase"><span>Layer 0</span><span className="text-indigo-400">Current: {assemblyIndex}</span><span>Layer {slices.length}</span></div>
+                        <input type="range" min="0" max={slices.length} value={assemblyIndex} onChange={(e) => { setAssemblyIndex(Number(e.target.value)); setIsPlaying(false); }} className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400" />
                         <div className="flex justify-center items-center space-x-6">
-                            <button onClick={() => { setAssemblyIndex(Math.max(0, assemblyIndex - 1)); setIsPlaying(false); }}><SkipBack className="w-5 h-5" /></button>
-                            <button onClick={() => { if (assemblyIndex >= slices.length) setAssemblyIndex(0); setIsPlaying(!isPlaying); }} className="p-3 bg-indigo-600 rounded-full">{isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6" />}</button>
-                            <button onClick={() => { setAssemblyIndex(Math.min(slices.length, assemblyIndex + 1)); setIsPlaying(false); }}><SkipForward className="w-5 h-5" /></button>
+                            <button onClick={() => { setAssemblyIndex(Math.max(0, assemblyIndex - 1)); setIsPlaying(false); }} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full"><SkipBack className="w-5 h-5" /></button>
+                            <button onClick={() => { if (assemblyIndex >= slices.length) setAssemblyIndex(0); setIsPlaying(!isPlaying); }} className="p-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full shadow-lg shadow-indigo-500/30">{isPlaying ? <Pause className="w-6 h-6 fill-current" /> : <Play className="w-6 h-6 fill-current pl-0.5" />}</button>
+                            <button onClick={() => { setAssemblyIndex(Math.min(slices.length, assemblyIndex + 1)); setIsPlaying(false); }} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full"><SkipForward className="w-5 h-5" /></button>
                         </div>
                     </div>
                 </>
             )}
-
             {activeTab === 'sheets' && (
-                <div className="w-full h-full bg-slate-900 p-20 flex justify-center">
-                     <div className="w-full max-w-5xl h-full">
-                        <SheetViewer sheets={sheets} axis={sliceSettings.axis} scale={1.5} />
-                     </div>
-                </div>
+                <div className="w-full h-full bg-slate-900 p-20 flex justify-center"><div className="w-full max-w-5xl h-full"><SheetViewer sheets={sheets} axis={sliceSettings.axis} scale={1.5} /></div></div>
             )}
         </div>
       </div>
     </div>
   );
 };
-
 export default App;
