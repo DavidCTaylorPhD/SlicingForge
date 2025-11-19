@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 
-export enum Axis { X = 'x', Y = 'y', Z = 'z' }
+export enum Axis {
+  X = 'x',
+  Y = 'y',
+  Z = 'z',
+}
 
 export interface MaterialSettings {
   width: number;
@@ -12,8 +16,6 @@ export interface MaterialSettings {
 export interface SliceSettings {
   axis: Axis;
   layerHeight: number;
-  mode: 'count' | 'height';
-  count: number;
 }
 
 export interface LineSegment {
@@ -26,7 +28,14 @@ export interface Slice {
   zHeight: number;
   segments: LineSegment[];
   contours: THREE.Vector3[][];
-  bounds: { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number; };
+  bounds: {
+    minX: number;
+    minY: number;
+    maxX: number;
+    maxY: number;
+    width: number;
+    height: number;
+  };
 }
 
 export interface PlacedSlice extends Slice {
